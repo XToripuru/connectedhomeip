@@ -55,9 +55,6 @@ jobs:
               with:
                 gh-context: ${{ toJson(github) }}
 
-            - name: Test
-              run: gn --version
-
             - name: Build Standalone cert tool
               run: |
                   ./scripts/run_in_build_env.sh \

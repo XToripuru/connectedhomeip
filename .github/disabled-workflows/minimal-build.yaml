@@ -49,9 +49,6 @@ jobs:
               run: |
                   CC=gcc CXX=g++ scripts/configure --project=examples/all-clusters-app/linux --enable-recommended=no && ./ninja-build
 
-            - name: Test
-              run: gn --version
-
     minimal-network-manager:
         name: Linux / configure build of network-manager-app
 
