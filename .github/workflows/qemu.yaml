@@ -87,6 +87,8 @@ jobs:
         steps:
             - name: Checkout
               uses: actions/checkout@v4
+            - name: Test
+              run: echo "abc"
             - name: Checkout submodules & Bootstrap
               uses: ./.github/actions/checkout-submodules-and-bootstrap
               with:
@@ -98,4 +100,5 @@ jobs:
                     "./scripts/build/build_examples.py \
                         --target tizen-arm-tests-no-ble-no-thread \
                         build
-                    "
+                    " \
+                || { ./scripts/helpers/tizen-crashlog.sh; exit 1; }

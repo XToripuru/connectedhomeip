@@ -406,8 +406,7 @@ namespace Dnssd {
 DnssdTizen DnssdTizen::sInstance;
 
 RegisterContext::RegisterContext(DnssdTizen * instance, const char * type, const DnssdService & service,
-                                 DnssdPublishCallback callback, void * context) :
-    GenericContext(ContextType::Register, instance)
+                                 DnssdPublishCallback callback, void * context) : GenericContext(ContextType::Register, instance)
 {
     Platform::CopyString(mName, service.mName);
     Platform::CopyString(mType, type);
@@ -431,8 +430,7 @@ RegisterContext::~RegisterContext()
 }
 
 BrowseContext::BrowseContext(DnssdTizen * instance, const char * type, Dnssd::DnssdServiceProtocol protocol, uint32_t interfaceId,
-                             DnssdBrowseCallback callback, void * context) :
-    GenericContext(ContextType::Browse, instance)
+                             DnssdBrowseCallback callback, void * context) : GenericContext(ContextType::Browse, instance)
 {
     Platform::CopyString(mType, type);
     mProtocol    = protocol;
@@ -452,8 +450,7 @@ BrowseContext::~BrowseContext()
 }
 
 ResolveContext::ResolveContext(DnssdTizen * instance, const char * name, const char * type, uint32_t interfaceId,
-                               DnssdResolveCallback callback, void * context) :
-    GenericContext(ContextType::Resolve, instance)
+                               DnssdResolveCallback callback, void * context) : GenericContext(ContextType::Resolve, instance)
 {
     Platform::CopyString(mName, name);
     Platform::CopyString(mType, type);
@@ -473,7 +470,7 @@ void ResolveContext::Finalize(CHIP_ERROR error)
     GetTextEntries(mResultTxtRecordLen, reinterpret_cast<uint8_t *>(mResultTxtRecord.get()), textEntries);
     mResult.mTextEntries   = textEntries.empty() ? nullptr : textEntries.data();
     mResult.mTextEntrySize = textEntries.size();
-
+    abort();
     chip::Inet::IPAddress ipAddr = mResult.mAddress.value();
 
     mCallback(mCbContext, &mResult, chip::Span<chip::Inet::IPAddress>(&ipAddr, 1), CHIP_NO_ERROR);
