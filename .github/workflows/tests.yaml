@@ -238,6 +238,13 @@ jobs:
                         --install_virtual_env out/venv \
                         --include_pytest_deps yes \
                      "
+                  echo "STEP 1"
+                  export CHIP_PW_COMMAND_LAUNCHER=ccache
+                  echo "STEP 2"
+                  ccache -s
+                  ccache --print-config
+                  echo $CCACHE_DIR
+                  echo "STEP 3"
                   ./scripts/run_in_build_env.sh \
                      "./scripts/build/build_examples.py \
                         --target linux-x64-chip-tool${CHIP_TOOL_VARIANT}-${BUILD_VARIANT} \
@@ -254,6 +261,8 @@ jobs:
                         build \
                         --copy-artifacts-to objdir-clone \
                      "
+                  echo "STEP 4"
+                  ls -lah /usr/local/ccache
 
             - name: Run Tests using the python parser sending commands to chip-tool
               run: |
