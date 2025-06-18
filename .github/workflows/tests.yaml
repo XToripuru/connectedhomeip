@@ -242,7 +242,6 @@ jobs:
                   export CHIP_PW_COMMAND_LAUNCHER=ccache
                   echo "STEP 2"
                   ccache -s
-                  ccache --print-config
                   echo $CCACHE_DIR
                   echo "STEP 3"
                   ./scripts/run_in_build_env.sh \
@@ -262,6 +261,8 @@ jobs:
                         --copy-artifacts-to objdir-clone \
                      "
                   echo "STEP 4"
+                  ccache -s
+                  ls -lah $CCACHE_DIR
                   ls -lah /usr/local/ccache
 
             - name: Run Tests using the python parser sending commands to chip-tool
