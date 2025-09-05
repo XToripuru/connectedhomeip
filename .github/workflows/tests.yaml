@@ -328,6 +328,7 @@ jobs:
                      run \
                      --iterations 1 \
                      --test-timeout-seconds 120 \
+                     --threads 5 \
                      --all-clusters-app ./out/linux-x64-all-clusters-${BUILD_VARIANT}/chip-all-clusters-app \
                      --lock-app ./out/linux-x64-lock-${BUILD_VARIANT}/chip-lock-app \
                      --ota-provider-app ./out/linux-x64-ota-provider-${BUILD_VARIANT}/chip-ota-provider-app \
@@ -354,6 +355,7 @@ jobs:
                      --expected-failures 3 \
                      --keep-going \
                      --test-timeout-seconds 120 \
+                     --threads 5 \
                      --all-clusters-app ./out/linux-x64-all-clusters-${BUILD_VARIANT}/chip-all-clusters-app \
                   "
 
@@ -372,6 +374,7 @@ jobs:
                      run \
                      --iterations 1 \
                      --test-timeout-seconds 120 \
+                     --threads 5 \
                      --all-clusters-app ./out/linux-x64-all-clusters-${BUILD_VARIANT}/chip-all-clusters-app \
                      --lock-app ./out/linux-x64-lock-${BUILD_VARIANT}/chip-lock-app \
                      --ota-provider-app ./out/linux-x64-ota-provider-${BUILD_VARIANT}/chip-ota-provider-app \
@@ -394,6 +397,7 @@ jobs:
                      run \
                      --iterations 1 \
                      --test-timeout-seconds 120 \
+                     --threads 5 \
                      --all-clusters-app ./out/linux-x64-all-clusters-${BUILD_VARIANT}/chip-all-clusters-app \
                      --lock-app ./out/linux-x64-lock-${BUILD_VARIANT}/chip-lock-app \
                      --ota-provider-app ./out/linux-x64-ota-provider-${BUILD_VARIANT}/chip-ota-provider-app \

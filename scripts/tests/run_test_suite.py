@@ -18,9 +18,14 @@ import enum
 import logging
 import os
 import sys
+import pickle
+import subprocess
 import time
 import typing
+import json
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
+from queue import Queue
 
 import chiptest
 import click
@@ -60,10 +65,10 @@ class RunContext:
     runtime: TestRunTime
 
     # If not empty, include only the specified test tags
-    include_tags: set(TestTag) = field(default_factory={})
+    include_tags: typing.Set[TestTag] = field(default_factory=set)
 
     # If not empty, exclude tests tagged with these tags
-    exclude_tags: set(TestTag) = field(default_factory={})
+    exclude_tags: typing.Set[TestTag] = field(default_factory=set)
 
 
 @click.group(chain=True)
@@ -304,16 +309,19 @@ def cmd_list(context):
     default=0,
     show_default=True,
     help='Number of tests that are expected to fail in each iteration.  Overall test will pass if the number of failures matches this.  Nonzero values require --keep-going')
+@click.option(
+    '--threads',
+    default=1,
+    type=int,
+    help='Number of threads used to parallelize tests. Values other than 1 are ignored on non-linux platform.')
 @click.pass_context
 def cmd_run(context, iterations, all_clusters_app, lock_app, ota_provider_app, ota_requestor_app,
             fabric_bridge_app, tv_app, bridge_app, lit_icd_app, microwave_oven_app, rvc_app, network_manager_app,
             energy_gateway_app, energy_management_app, closure_app, chip_repl_yaml_tester,
-            chip_tool_with_python, pics_file, keep_going, test_timeout_seconds, expected_failures):
+            chip_tool_with_python, pics_file, keep_going, test_timeout_seconds, expected_failures, threads):
     if expected_failures != 0 and not keep_going:
         logging.exception(f"'--expected-failures {expected_failures}' used without '--keep-going'")
         sys.exit(2)
-
-    runner = chiptest.runner.Runner()
 
     paths_finder = PathsFinder()
 
@@ -389,64 +397,91 @@ def cmd_run(context, iterations, all_clusters_app, lock_app, ota_provider_app, o
         chip_tool_with_python_cmd=['python3'] + [chip_tool_with_python],
     )
 
-    if sys.platform == 'linux':
-        ns = chiptest.linux.IsolatedNetworkNamespace(
-            unshared=context.obj.in_unshare)
-        paths = chiptest.linux.PathsWithNetworkNamespaces(paths)
-
     logging.info("Each test will be executed %d times" % iterations)
 
-    apps_register = AppsRegister()
-    apps_register.init()
+    max_workers = threads
 
-    def cleanup():
-        apps_register.uninit()
-        if sys.platform == 'linux':
-            ns.terminate()
+    if sys.platform != "linux":
+        max_workers = 1
+
+    os.makedirs("logs", exist_ok=True)
 
     for i in range(iterations):
         logging.info("Starting iteration %d" % (i+1))
         observed_failures = 0
-        for test in context.obj.tests:
-            if context.obj.include_tags:
-                if not (test.tags & context.obj.include_tags):
-                    logging.debug("Test %s not included" % test.name)
-                    continue
+        available_ids = Queue()
 
-            if context.obj.exclude_tags:
-                if test.tags & context.obj.exclude_tags:
-                    logging.debug("Test %s excluded" % test.name)
-                    continue
+        for i in range(max_workers):
+            available_ids.put(i)
 
-            test_start = time.monotonic()
-            try:
-                if context.obj.dry_run:
-                    logging.info("Would run test: %s" % test.name)
-                else:
-                    logging.info('%-20s - Starting test' % (test.name))
-                test.Run(
-                    runner, apps_register, paths, pics_file, test_timeout_seconds, context.obj.dry_run,
-                    test_runtime=context.obj.runtime)
-                if not context.obj.dry_run:
-                    test_end = time.monotonic()
-                    logging.info('%-30s - Completed in %0.2f seconds' %
-                                 (test.name, (test_end - test_start)))
-            except Exception:
-                test_end = time.monotonic()
-                logging.exception('%-30s - FAILED in %0.2f seconds' %
-                                  (test.name, (test_end - test_start)))
-                observed_failures += 1
-                if not keep_going:
-                    cleanup()
-                    sys.exit(2)
+        def run_test_with_id(test, context, paths, pics_file, test_timeout_seconds):
+            index = available_ids.get()
+            result = run_test(test, index, context, paths, pics_file, test_timeout_seconds)
+            available_ids.put(index) 
+            return result
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_test = {
+                executor.submit(run_test_with_id, test, context, paths, pics_file, test_timeout_seconds): test
+                for test in context.obj.tests
+            }
+
+            for future in as_completed(future_to_test):
+                test = future_to_test[future]
+                try:
+                    success = future.result()
+                    if not success:
+                        observed_failures += 1
+
+                    with open(os.path.join("logs", test.name)) as logs:
+                        sys.stderr.write(logs.read())
+                except Exception as e:
+                    logging.exception(f"Exception while running test {test.name}: {e}")
+                    observed_failures += 1
 
         if observed_failures != expected_failures:
             logging.exception(f'Iteration {i}: expected failure count {expected_failures}, but got {observed_failures}')
-            cleanup()
             sys.exit(2)
 
-    cleanup()
+def run_test(test, index, context, paths, pics_file, test_timeout_seconds):
+    if sys.platform == "linux":
+        ns = chiptest.linux.IsolatedNetworkNamespace(
+            name_suffix='{}'.format(index),
+            index=index,
+            unshared=context.obj.in_unshare)
 
+        paths = ns.paths_with_network_namespaces(paths)
+
+    obj = {
+        "index": index,
+        "test": test,
+        "context": context.obj,
+        "paths": paths,
+        "pics_file": pics_file,
+        "test_timeout_seconds": test_timeout_seconds
+    }
+
+    payload = pickle.dumps(obj)
+
+    cmd = [sys.executable, "scripts/tests/run_test_case.py"]
+
+    if sys.platform == "linux":
+        cmd[:0] = ["ip", "netns", "exec", "rpc-{}".format(index)]
+
+    with open(os.path.join("logs", test.name), "w") as logs:
+        proc = subprocess.Popen(
+            cmd,
+            stdin=subprocess.PIPE,
+            stdout=logs,
+            stderr=logs
+        )
+
+        stdout, _ = proc.communicate(payload)
+
+    if sys.platform == "linux":
+        ns.terminate()
+
+    return proc.returncode == 0
 
 # On linux, allow an execution shell to be prepared
 if sys.platform == 'linux':
@@ -456,7 +491,6 @@ if sys.platform == 'linux':
               'network namespaces)'))
     @click.pass_context
     def cmd_shell(context):
-        chiptest.linux.IsolatedNetworkNamespace(unshared=context.obj.in_unshare)
         os.execvpe("bash", ["bash"], os.environ.copy())
 
 
