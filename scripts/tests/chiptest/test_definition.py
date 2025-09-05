@@ -30,7 +30,7 @@ TEST_NODE_ID = '0x12344321'
 
 class App:
 
-    def __init__(self, runner, command):
+    def __init__(self, name, runner, command):
         self.process = None
         self.outpipe = None
         self.runner = runner
@@ -393,6 +393,8 @@ class TestDefinition:
                     if path == paths.chip_tool or path == paths.chip_repl_yaml_tester_cmd or path == paths.chip_tool_with_python_cmd:
                         continue
 
+                    logging.info(f'TEST123ABC {self.name} {path} {key}')
+
                     # Skip items where we don't actually have a path.  This can
                     # happen if the relevant application does not exist.  It's
                     # non-fatal as long as we are not trying to run any tests that
@@ -404,7 +406,7 @@ class TestDefinition:
                     if path == target_app:
                         key = 'default'
 
-                    app = App(runner, path)
+                    app = App(self.name, runner, path)
                     # Add the App to the register immediately, so if it fails during
                     # start() we will be able to clean things up properly.
                     apps_register.add(key, app)
@@ -415,7 +417,7 @@ class TestDefinition:
                     # It may sometimes be useful to run the same app multiple times depending
                     # on the implementation. So this code creates a duplicate entry but with a different
                     # key.
-                    app = App(runner, path)
+                    app = App(self.name, runner, path)
                     apps_register.add(f'{key}#2', app)
                     app.factoryReset()
 

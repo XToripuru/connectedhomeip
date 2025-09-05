@@ -313,8 +313,6 @@ def cmd_run(context, iterations, all_clusters_app, lock_app, ota_provider_app, o
         logging.exception(f"'--expected-failures {expected_failures}' used without '--keep-going'")
         sys.exit(2)
 
-    runner = chiptest.runner.Runner()
-
     paths_finder = PathsFinder()
 
     if all_clusters_app is None:
@@ -408,6 +406,7 @@ def cmd_run(context, iterations, all_clusters_app, lock_app, ota_provider_app, o
         logging.info("Starting iteration %d" % (i+1))
         observed_failures = 0
         for test in context.obj.tests:
+            runner = chiptest.runner.Runner()
             if context.obj.include_tags:
                 if not (test.tags & context.obj.include_tags):
                     logging.debug("Test %s not included" % test.name)
