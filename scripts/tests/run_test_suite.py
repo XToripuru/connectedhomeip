@@ -20,6 +20,7 @@ import os
 import sys
 import time
 import typing
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 import chiptest
@@ -313,8 +314,6 @@ def cmd_run(context, iterations, all_clusters_app, lock_app, ota_provider_app, o
         logging.exception(f"'--expected-failures {expected_failures}' used without '--keep-going'")
         sys.exit(2)
 
-    runner = chiptest.runner.Runner()
-
     paths_finder = PathsFinder()
 
     if all_clusters_app is None:
@@ -389,56 +388,51 @@ def cmd_run(context, iterations, all_clusters_app, lock_app, ota_provider_app, o
         chip_tool_with_python_cmd=['python3'] + [chip_tool_with_python],
     )
 
-    if sys.platform == 'linux':
-        ns = chiptest.linux.IsolatedNetworkNamespace(
-            unshared=context.obj.in_unshare)
-        paths = chiptest.linux.PathsWithNetworkNamespaces(paths)
+    # if sys.platform == 'linux':
+        # ns = chiptest.linux.IsolatedNetworkNamespace(
+        #     name_suffix='x',
+        #     unshared=context.obj.in_unshare)
+        # paths = ns.paths_with_network_namespaces(paths)
+        # paths = chiptest.linux.PathsWithNetworkNamespaces(paths)
 
     logging.info("Each test will be executed %d times" % iterations)
 
     apps_register = AppsRegister()
-    apps_register.init()
+    init = False
 
     def cleanup():
         apps_register.uninit()
-        if sys.platform == 'linux':
-            ns.terminate()
+        # if sys.platform == 'linux':
+        #     ns.terminate()
 
     for i in range(iterations):
         logging.info("Starting iteration %d" % (i+1))
         observed_failures = 0
-        for test in context.obj.tests:
-            if context.obj.include_tags:
-                if not (test.tags & context.obj.include_tags):
-                    logging.debug("Test %s not included" % test.name)
-                    continue
+        for tests in chunked(context.obj.tests, 2):
+            futures = []
 
-            if context.obj.exclude_tags:
-                if test.tags & context.obj.exclude_tags:
-                    logging.debug("Test %s excluded" % test.name)
-                    continue
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                for j, test in enumerate(tests):
+                    ns = chiptest.linux.IsolatedNetworkNamespace(
+                        name_suffix='w{}'.format(j),
+                        eth_ci_addr='10.10.10.{}'.format(5 + j),
+                        unshared=context.obj.in_unshare)
+                    paths = ns.paths_with_network_namespaces(paths)
 
-            test_start = time.monotonic()
-            try:
-                if context.obj.dry_run:
-                    logging.info("Would run test: %s" % test.name)
-                else:
-                    logging.info('%-20s - Starting test' % (test.name))
-                test.Run(
-                    runner, apps_register, paths, pics_file, test_timeout_seconds, context.obj.dry_run,
-                    test_runtime=context.obj.runtime)
-                if not context.obj.dry_run:
-                    test_end = time.monotonic()
-                    logging.info('%-30s - Completed in %0.2f seconds' %
-                                 (test.name, (test_end - test_start)))
-            except Exception:
-                test_end = time.monotonic()
-                logging.exception('%-30s - FAILED in %0.2f seconds' %
-                                  (test.name, (test_end - test_start)))
-                observed_failures += 1
-                if not keep_going:
-                    cleanup()
-                    sys.exit(2)
+                    if not init:
+                        apps_register.init()
+                        init = True
+
+                    future = executor.submit(run_test, context, test, apps_register, paths, pics_file, test_timeout_seconds)
+                    # t = threading.Thread(target=run_test, args=(context, test, apps_register, paths, pics_file, test_timeout_seconds))
+                    # t.start()
+                    futures.append((future, ns))
+
+                for future, ns, result in futures:
+                    success = future.result()
+                    ns.terminate()
+                    if not success:
+                        observed_failures += 1
 
         if observed_failures != expected_failures:
             logging.exception(f'Iteration {i}: expected failure count {expected_failures}, but got {observed_failures}')
@@ -447,6 +441,42 @@ def cmd_run(context, iterations, all_clusters_app, lock_app, ota_provider_app, o
 
     cleanup()
 
+def chunked(iterable, size):
+    for i in range(0, len(iterable), size):
+        yield iterable[i:i+size]
+
+def run_test(context, test, apps_register, paths, pics_file, test_timeout_seconds):
+    runner = chiptest.runner.Runner()
+    if context.obj.include_tags:
+        if not (test.tags & context.obj.include_tags):
+            logging.debug("Test %s not included" % test.name)
+            return
+
+    if context.obj.exclude_tags:
+        if test.tags & context.obj.exclude_tags:
+            logging.debug("Test %s excluded" % test.name)
+            return
+
+    test_start = time.monotonic()
+    try:
+        if context.obj.dry_run:
+            logging.info("Would run test: %s" % test.name)
+        else:
+            logging.info('%-20s - Starting test' % (test.name))
+        test.Run(
+            runner, apps_register, paths, pics_file, test_timeout_seconds, context.obj.dry_run,
+            test_runtime=context.obj.runtime)
+        if not context.obj.dry_run:
+            test_end = time.monotonic()
+            logging.info('%-30s - Completed in %0.2f seconds' %
+                            (test.name, (test_end - test_start)))
+    except Exception:
+        test_end = time.monotonic()
+        logging.exception('%-30s - FAILED in %0.2f seconds' %
+                            (test.name, (test_end - test_start)))
+        return False
+
+    return True
 
 # On linux, allow an execution shell to be prepared
 if sys.platform == 'linux':
@@ -456,7 +486,7 @@ if sys.platform == 'linux':
               'network namespaces)'))
     @click.pass_context
     def cmd_shell(context):
-        chiptest.linux.IsolatedNetworkNamespace(unshared=context.obj.in_unshare)
+        # chiptest.linux.IsolatedNetworkNamespace('app', 'tool', unshared=context.obj.in_unshare)
         os.execvpe("bash", ["bash"], os.environ.copy())
 
 
