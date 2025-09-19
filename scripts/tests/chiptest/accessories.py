@@ -35,11 +35,23 @@ class AppsRegister:
     _instance = None
     __accessories = {}
 
-    def init(self):
+    def init(self, name_suffix):
+        pid = subprocess.check_output(["ip", "netns", "pids", "rpc-{}".format(name_suffix)]).decode().splitlines()
+        pid = int(pid[0])
+
+        with open("/proc/self/ns/net") as original_ns_fs:
+            self.original_fd = original_ns_fs
+
+        with open("/proc/{}/ns/net".format(pid)) as ns_fd:
+            os.setns(ns_fd.fileno(), 0)
+            
         self.__startXMLRPCServer()
 
     def uninit(self):
         self.__stopXMLRPCServer()
+        with open("/proc/{}/ns/net".format(self.original_fd)) as ns_fd:
+            os.setns(ns_fd.fileno(), 0)
+
 
     @property
     def accessories(self):
