@@ -35,6 +35,7 @@ from chiptest.test_definition import TestRunTime, TestTag
 from chipyaml.paths_finder import PathsFinder
 from run_test_suite import RunContext
 
+
 def run_test(obj, test, ns, apps_register, paths, pics_file, ble_controller_app, ble_controller_tool, test_timeout_seconds):
     if ns is None:
         runner = chiptest.runner.Runner()
@@ -65,14 +66,15 @@ def run_test(obj, test, ns, apps_register, paths, pics_file, ble_controller_app,
         if not obj.dry_run:
             test_end = time.monotonic()
             logging.info('%-30s - Completed in %0.2f seconds' %
-                            (test.name, (test_end - test_start)))
+                         (test.name, (test_end - test_start)))
     except Exception:
         test_end = time.monotonic()
         logging.exception('%-30s - FAILED in %0.2f seconds' %
-                            (test.name, (test_end - test_start)))
+                          (test.name, (test_end - test_start)))
         return 1
 
     return 0
+
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
@@ -83,7 +85,8 @@ if __name__ == "__main__":
     apps_register = AppsRegister()
     apps_register.init()
 
-    result = run_test(obj["context"], obj["test"], obj["ns"], apps_register, obj["paths"], obj["pics_file"], obj["ble_wifi"], obj["ble_controller_app"], obj["ble_controller_tool"], obj["test_timeout_seconds"])
+    result = run_test(obj["context"], obj["test"], obj["ns"], apps_register, obj["paths"], obj["pics_file"],
+                      obj["ble_wifi"], obj["ble_controller_app"], obj["ble_controller_tool"], obj["test_timeout_seconds"])
 
     apps_register.uninit()
 

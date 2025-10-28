@@ -406,7 +406,6 @@ def cmd_run(context, iterations, all_clusters_app, lock_app, ota_provider_app, o
 
     logging.info("Each test will be executed %d times" % iterations)
 
-
     for i in range(iterations):
         logging.info("Starting iteration %d" % (i+1))
         observed_failures = 0
@@ -418,7 +417,7 @@ def cmd_run(context, iterations, all_clusters_app, lock_app, ota_provider_app, o
         def run_test_with_id(test, context, paths, pics_file, ble_wifi, test_timeout_seconds):
             index = available_ids.get()
             result = run_test(test, index, context, paths, pics_file, ble_wifi, test_timeout_seconds)
-            available_ids.put(index) 
+            available_ids.put(index)
             return result
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -507,6 +506,7 @@ def run_test(test, index, context, paths, pics_file, ble_wifi, test_timeout_seco
         ns.terminate()
 
     return proc.returncode == 0
+
 
 # On linux, allow an execution shell to be prepared
 if sys.platform == 'linux':
