@@ -35,7 +35,7 @@ TEST_SETUP_QR_CODE = 'MT:-24J042C00KA0648G00'
 
 class App:
 
-    def __init__(self, runner, application):
+    def __init__(self, runner, application, kvs_path):
         self.process = None
         self.outpipe = None
         self.runner = runner
@@ -43,7 +43,7 @@ class App:
         self.cv_stopped = threading.Condition()
         self.stopped = True
         self.lastLogIndex = 0
-        self.kvsPathSet = {'/tmp/chip_kvs'}
+        self.kvsPathSet = {kvs_path}
         self.options = None
         self.killed = False
 
@@ -420,12 +420,16 @@ class TestDefinition:
                     if command is None:
                         continue
 
+                    kvs_path = '/tmp/{}-{}'.format(self.name, key)
+                    if '--KVS' not in command.args:
+                        command = command.add_args(('--KVS', kvs_path))
+
                     # For the app indicated by self.target, give it the 'default' key to add to the register
                     if command == target_app:
                         key = 'default'
                     if ble_controller_app is not None:
                         command = command.add_args(("--ble-controller", str(ble_controller_app), "--wifi"))
-                    app = App(runner, command)
+                    app = App(runner, command, kvs_path)
                     # Add the App to the register immediately, so if it fails during
                     # start() we will be able to clean things up properly.
                     apps_register.add(key, app)
@@ -436,7 +440,7 @@ class TestDefinition:
                     # It may sometimes be useful to run the same app multiple times depending
                     # on the implementation. So this code creates a duplicate entry but with a different
                     # key.
-                    app = App(runner, command)
+                    app = App(runner, command, kvs_path)
                     apps_register.add(f'{key}#2', app)
                     app.factoryReset()
 
