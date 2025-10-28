@@ -19,7 +19,6 @@ import logging
 import pickle
 import sys
 import time
-from dataclasses import dataclass
 
 import chiptest
 from chiptest.accessories import AppsRegister

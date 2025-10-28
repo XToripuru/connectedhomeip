@@ -15,7 +15,6 @@
 # limitations under the License.
 
 import enum
-import json
 import logging
 import os
 import pickle
