@@ -481,20 +481,23 @@ def run_test(test, index, context, paths, pics_file, ble_wifi, test_timeout_seco
 
     payload = pickle.dumps(obj)
 
-    cmd = [sys.executable, "scripts/tests/run_test_case.py"]
+    with open(Path('logs') / test.name, "w") as logs:
+        if ns is None:
+            runner = chiptest.runner.Runner(logs)
+        else:
+            runner = chiptest.runner.NamespacedRunner(ns, logs)
 
-    if sys.platform == "linux":
-        cmd[:0] = ["ip", "netns", "exec", "rpc-{}".format(index)]
+        test_case = Application(kind='rpc', path=Path('scripts/tests/run_test_case.py')).wrap_with((sys.executable),)
 
-    with open(os.path.join("logs", test.name), "w") as logs:
-        proc = subprocess.Popen(
-            cmd,
-            stdin=subprocess.PIPE,
-            stdout=logs,
-            stderr=logs
-        )
+        proc, stdout, stderr = runner.RunSubprocess(test_case, wait=False, stdin=subprocess.PIPE)
+        # proc = subprocess.Popen(
+        #     cmd,
+        #     stdin=subprocess.PIPE,
+        #     stdout=logs,
+        #     stderr=logs
+        # )
 
-        stdout, _ = proc.communicate(payload)
+        _, _ = proc.communicate(payload)
 
     if sys.platform == "linux":
         if ble_wifi:

@@ -163,8 +163,8 @@ class Runner:
             self.capture_delegate.Log(name, 'EXECUTING %r' % cmd)
 
         s = subprocess.Popen(cmd, stdin=stdin, stdout=outpipe, stderr=errpipe)
-        outpipe.close()
-        errpipe.close()
+        # outpipe.close()
+        # errpipe.close()
 
         if not wait:
             return s, outpipe, errpipe
