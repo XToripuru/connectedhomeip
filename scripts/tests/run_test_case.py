@@ -15,25 +15,14 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-import enum
-import json
 import logging
-import os
 import pickle
 import sys
 import time
-import typing
-from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import chiptest
-import click
-import coloredlogs
 from chiptest.accessories import AppsRegister
-from chiptest.glob_matcher import GlobMatcher
-from chiptest.test_definition import TestRunTime, TestTag
-from chipyaml.paths_finder import PathsFinder
-from run_test_suite import RunContext
 
 
 def run_test(obj, test, ns, apps_register, paths, pics_file, ble_controller_app, ble_controller_tool, test_timeout_seconds):

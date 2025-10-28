@@ -21,7 +21,6 @@ import os
 import pickle
 import subprocess
 import sys
-import time
 import typing
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -31,7 +30,6 @@ from queue import Queue
 import chiptest
 import click
 import coloredlogs
-from chiptest.accessories import AppsRegister
 from chiptest.glob_matcher import GlobMatcher
 from chiptest.runner import Application
 from chiptest.test_definition import TestRunTime, TestTag
@@ -486,7 +484,7 @@ def run_test(test, index, context, paths, pics_file, ble_wifi, test_timeout_seco
         else:
             runner = chiptest.runner.NamespacedRunner(ns, logs)
 
-        test_case = Application(kind='rpc', path=Path('scripts/tests/run_test_case.py')).wrap_with((sys.executable),)
+        test_case = Application(kind='rpc', path=Path('scripts/tests/run_test_case.py')).wrap_with((sys.executable,))
 
         proc, stdout, stderr = runner.RunSubprocess(test_case, wait=False, stdin=subprocess.PIPE)
         # proc = subprocess.Popen(
