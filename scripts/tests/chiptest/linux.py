@@ -75,7 +75,7 @@ class IsolatedNetworkNamespace:
         # Create links for switch to net connections
         "ip link add {app_link_name}-{index} type veth peer name {app_link_name}-sw-{index}",
         "ip link add {tool_link_name}-{index} type veth peer name {tool_link_name}-sw-{index}",
-        "ip link add {rpc_link_name}-{index} type veth peer name eth-{rpc_link_name}-sw-{index}",
+        "ip link add {rpc_link_name}-{index} type veth peer name {rpc_link_name}-sw-{index}",
 
         # Link the connections together
         "ip link set {app_link_name}-{index} netns app-{index}",
