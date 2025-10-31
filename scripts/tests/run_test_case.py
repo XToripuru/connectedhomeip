@@ -19,6 +19,7 @@ import logging
 import pickle
 import sys
 import time
+
 import chiptest
 from chiptest.accessories import AppsRegister
 
