@@ -80,7 +80,7 @@ class IsolatedNetworkNamespace:
         # Link the connections together
         "ip link set {app_link_name}-{index} netns app-{index}",
         "ip link set {tool_link_name}-{index} netns tool-{index}",
-        "ip link set {rpc_link_name}-{index} netns rpc-{index}"
+        "ip link set {rpc_link_name}-{index} netns rpc-{index}",
 
         # Bridge all the connections together.
         "ip link add name br1-{index} type bridge",
