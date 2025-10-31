@@ -483,7 +483,7 @@ def run_test(test, index, context, paths, pics_file, ble_wifi, test_timeout_seco
         else:
             runner = chiptest.runner.NamespacedRunner(ns, logs)
 
-        test_case = Application(kind='rpc', path=Path('scripts/tests/run_test_case.py')).wrap_with((sys.executable,))
+        test_case = Subprocess(kind='rpc', path=Path('scripts/tests/run_test_case.py')).wrap_with((sys.executable,))
 
         proc, stdout, stderr = runner.RunSubprocess(test_case, wait=False, stdin=subprocess.PIPE)
         # proc = subprocess.Popen(
