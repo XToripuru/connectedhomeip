@@ -17,16 +17,20 @@
 import enum
 import logging
 import os
+import pickle
+import subprocess
 import sys
-import time
 import typing
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
+from pathlib import Path
+from queue import Queue
 
 import chiptest
 import click
 import coloredlogs
-from chiptest.accessories import AppsRegister
 from chiptest.glob_matcher import GlobMatcher
+from chiptest.runner import Subprocess
 from chiptest.test_definition import TestRunTime, TestTag
 from chipyaml.paths_finder import PathsFinder
 
@@ -148,12 +152,18 @@ def main(context, dry_run, log_level, target, target_glob, target_skip_glob,
     elif runner == 'darwin_framework_tool_python':
         runtime = TestRunTime.DARWIN_FRAMEWORK_TOOL_PYTHON
 
-    if chip_tool is None and not runtime == TestRunTime.MATTER_REPL_PYTHON:
-        paths_finder = PathsFinder()
-        if runtime == TestRunTime.CHIP_TOOL_PYTHON:
-            chip_tool = paths_finder.get('chip-tool')
-        else:
-            chip_tool = paths_finder.get('darwin-framework-tool')
+    if chip_tool is not None:
+        chip_tool = Subprocess(kind='tool', path=Path(chip_tool))
+    else:
+        if not runtime == TestRunTime.MATTER_REPL_PYTHON:
+            paths_finder = PathsFinder()
+            if runtime == TestRunTime.CHIP_TOOL_PYTHON:
+                chip_tool_path = paths_finder.get('chip-tool')
+            else:  # DARWIN_FRAMEWORK_TOOL_PYTHON
+                chip_tool_path = paths_finder.get('darwin-framework-tool')
+
+            if chip_tool_path is not None:
+                chip_tool = Subprocess(kind='tool', path=Path(chip_tool_path)).wrap_with(('python3',))
 
     if include_tags:
         include_tags = {TestTag.__members__[t] for t in include_tags}
@@ -314,172 +324,185 @@ def cmd_list(context):
     default=False,
     show_default=True,
     help='Use Bluetooth and WiFi mock servers to perform BLE-WiFi commissioning. This option is available on Linux platform only.')
+@click.option(
+    '--threads',
+    type=int,
+    default=1,
+    show_default=True,
+    help='Number of threads used to parallelize tests. Values other than 1 are ignored on non-linux platform.')
 @click.pass_context
 def cmd_run(context, iterations, all_clusters_app, lock_app, ota_provider_app, ota_requestor_app,
             fabric_bridge_app, tv_app, bridge_app, lit_icd_app, microwave_oven_app, rvc_app, network_manager_app,
             energy_gateway_app, energy_management_app, closure_app, matter_repl_yaml_tester,
-            chip_tool_with_python, pics_file, keep_going, test_timeout_seconds, expected_failures, ble_wifi):
+            chip_tool_with_python, pics_file, keep_going, test_timeout_seconds, expected_failures, ble_wifi, threads):
     if expected_failures != 0 and not keep_going:
         logging.exception(f"'--expected-failures {expected_failures}' used without '--keep-going'")
         sys.exit(2)
 
-    runner = chiptest.runner.Runner()
-
     paths_finder = PathsFinder()
 
-    if all_clusters_app is None:
-        all_clusters_app = paths_finder.get('chip-all-clusters-app')
+    def build_app(arg_value, kind: str, key: str):
+        app_path = arg_value if arg_value else paths_finder.get(key)
+        if app_path is not None:
+            return Subprocess(kind=kind, path=Path(app_path))
+        return None
 
-    if lock_app is None:
-        lock_app = paths_finder.get('chip-lock-app')
-
-    if fabric_bridge_app is None:
-        fabric_bridge_app = paths_finder.get('fabric-bridge-app')
-
-    if ota_provider_app is None:
-        ota_provider_app = paths_finder.get('chip-ota-provider-app')
-
-    if ota_requestor_app is None:
-        ota_requestor_app = paths_finder.get('chip-ota-requestor-app')
-
-    if tv_app is None:
-        tv_app = paths_finder.get('chip-tv-app')
-
-    if bridge_app is None:
-        bridge_app = paths_finder.get('chip-bridge-app')
-
-    if lit_icd_app is None:
-        lit_icd_app = paths_finder.get('lit-icd-app')
-
-    if microwave_oven_app is None:
-        microwave_oven_app = paths_finder.get('chip-microwave-oven-app')
-
-    if rvc_app is None:
-        rvc_app = paths_finder.get('chip-rvc-app')
-
-    if network_manager_app is None:
-        network_manager_app = paths_finder.get('matter-network-manager-app')
-
-    if energy_gateway_app is None:
-        energy_gateway_app = paths_finder.get('chip-energy-gateway-app')
-
-    if energy_management_app is None:
-        energy_management_app = paths_finder.get('chip-energy-management-app')
-
-    if closure_app is None:
-        closure_app = paths_finder.get('closure-app')
-
-    if matter_repl_yaml_tester is None:
-        matter_repl_yaml_tester = paths_finder.get('yamltest_with_matter_repl_tester.py')
+    all_clusters_app = build_app(all_clusters_app, 'app', 'chip-all-clusters-app')
+    lock_app = build_app(lock_app, 'app', 'chip-lock-app')
+    fabric_bridge_app = build_app(fabric_bridge_app, 'app', 'fabric-bridge-app')
+    ota_provider_app = build_app(ota_provider_app, 'app', 'chip-ota-provider-app')
+    ota_requestor_app = build_app(ota_requestor_app, 'app', 'chip-ota-requestor-app')
+    tv_app = build_app(tv_app, 'app', 'chip-tv-app')
+    bridge_app = build_app(bridge_app, 'app', 'chip-bridge-app')
+    lit_icd_app = build_app(lit_icd_app, 'app', 'lit-icd-app')
+    microwave_oven_app = build_app(microwave_oven_app, 'app', 'chip-microwave-oven-app')
+    rvc_app = build_app(rvc_app, 'app', 'chip-rvc-app')
+    network_manager_app = build_app(network_manager_app, 'app', 'matter-network-manager-app')
+    energy_gateway_app = build_app(energy_gateway_app, 'app', 'chip-energy-gateway-app')
+    energy_management_app = build_app(energy_management_app, 'app', 'chip-energy-management-app')
+    closure_app = build_app(closure_app, 'app', 'closure-app')
+    matter_repl_yaml_tester = build_app(matter_repl_yaml_tester, 'tool',
+                                        'yamltest_with_matter_repl_tester.py').wrap_with(('python3',))
 
     if chip_tool_with_python is None:
         if context.obj.runtime == TestRunTime.DARWIN_FRAMEWORK_TOOL_PYTHON:
-            chip_tool_with_python = paths_finder.get('darwinframeworktool.py')
+            chip_tool_with_python = build_app(None, 'tool', 'darwinframeworktool.py')
         else:
-            chip_tool_with_python = paths_finder.get('chiptool.py')
+            chip_tool_with_python = build_app(None, 'tool', 'chiptool.py')
+
+        if chip_tool_with_python is not None:
+            chip_tool_with_python = chip_tool_with_python.wrap_with(('python3',))
 
     if ble_wifi and sys.platform != "linux":
         raise click.BadOptionUsage("ble-wifi", "Option --ble-wifi is available on Linux platform only")
 
     # Command execution requires an array
     paths = chiptest.ApplicationPaths(
-        chip_tool=[context.obj.chip_tool],
-        all_clusters_app=[all_clusters_app],
-        lock_app=[lock_app],
-        fabric_bridge_app=[fabric_bridge_app],
-        ota_provider_app=[ota_provider_app],
-        ota_requestor_app=[ota_requestor_app],
-        tv_app=[tv_app],
-        bridge_app=[bridge_app],
-        lit_icd_app=[lit_icd_app],
-        microwave_oven_app=[microwave_oven_app],
-        rvc_app=[rvc_app],
-        network_manager_app=[network_manager_app],
-        energy_gateway_app=[energy_gateway_app],
-        energy_management_app=[energy_management_app],
-        closure_app=[closure_app],
-        matter_repl_yaml_tester_cmd=['python3'] + [matter_repl_yaml_tester],
-        chip_tool_with_python_cmd=['python3'] + [chip_tool_with_python],
+        chip_tool=context.obj.chip_tool,
+        all_clusters_app=all_clusters_app,
+        lock_app=lock_app,
+        fabric_bridge_app=fabric_bridge_app,
+        ota_provider_app=ota_provider_app,
+        ota_requestor_app=ota_requestor_app,
+        tv_app=tv_app,
+        bridge_app=bridge_app,
+        lit_icd_app=lit_icd_app,
+        microwave_oven_app=microwave_oven_app,
+        rvc_app=rvc_app,
+        network_manager_app=network_manager_app,
+        energy_gateway_app=energy_gateway_app,
+        energy_management_app=energy_management_app,
+        closure_app=closure_app,
+        matter_repl_yaml_tester_cmd=matter_repl_yaml_tester,
+        chip_tool_with_python_cmd=chip_tool_with_python,
     )
 
+    max_workers = threads if sys.platform == 'linux' else 1
+
+    os.makedirs('logs', exist_ok=True)
+
+    logging.info("Each test will be executed %d times" % iterations)
+
+    for i in range(iterations):
+        logging.info("Starting iteration %d" % (i+1))
+        observed_failures = 0
+        available_ids = Queue()
+
+        for i in range(max_workers):
+            available_ids.put(i)
+
+        def run_test_with_id(test, context, paths, pics_file, ble_wifi, test_timeout_seconds):
+            index = available_ids.get()
+            result = run_test(test, index, context, paths, pics_file, ble_wifi, test_timeout_seconds)
+            available_ids.put(index)
+            return result
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_test = {
+                executor.submit(run_test_with_id, test, context, paths, pics_file, ble_wifi, test_timeout_seconds): test
+                for test in context.obj.tests
+            }
+
+            for future in as_completed(future_to_test):
+                test = future_to_test[future]
+                try:
+                    success = future.result()
+                    if not success:
+                        observed_failures += 1
+
+                    with open(os.path.join("logs", test.name)) as logs:
+                        sys.stderr.write(logs.read())
+                except Exception as e:
+                    logging.exception(f"Exception while running test {test.name}: {e}")
+                    observed_failures += 1
+
+        if observed_failures != expected_failures:
+            logging.exception(f'Iteration {i}: expected failure count {expected_failures}, but got {observed_failures}')
+            sys.exit(2)
+
+
+def run_test(test, index, context, paths, pics_file, ble_wifi, test_timeout_seconds):
     ble_controller_app = None
     ble_controller_tool = None
+    ns = None
 
     if sys.platform == 'linux':
         ns = chiptest.linux.IsolatedNetworkNamespace(
+            index=index,
             # Do not bring up the app interface link automatically when doing BLE-WiFi commissioning.
             setup_app_link_up=not ble_wifi,
             # Change the app link name so the interface will be recognized as WiFi or Ethernet
             # depending on the commissioning method used.
             app_link_name='wlx-app' if ble_wifi else 'eth-app',
             unshared=context.obj.in_unshare)
+
         if ble_wifi:
             bus = chiptest.linux.DBusTestSystemBus()
             bluetooth = chiptest.linux.BluetoothMock()
             wifi = chiptest.linux.WpaSupplicantMock("MatterAP", "MatterAPPassword", ns)
             ble_controller_app = 0   # Bind app to the first BLE controller
             ble_controller_tool = 1  # Bind tool to the second BLE controller
-        paths = chiptest.linux.PathsWithNetworkNamespaces(paths)
 
-    logging.info("Each test will be executed %d times" % iterations)
+    obj = {
+        "index": index,
+        "test": test,
+        "context": context.obj,
+        "ns": ns,
+        "paths": paths,
+        "ble_controller_app": ble_controller_app,
+        "ble_controller_tool": ble_controller_tool,
+        "pics_file": pics_file,
+        "test_timeout_seconds": test_timeout_seconds
+    }
 
-    apps_register = AppsRegister()
-    apps_register.init()
+    payload = pickle.dumps(obj)
 
-    def cleanup():
-        apps_register.uninit()
-        if sys.platform == 'linux':
-            if ble_wifi:
-                wifi.terminate()
-                bluetooth.terminate()
-                bus.terminate()
-            ns.terminate()
+    with open(Path('logs') / test.name, "w") as logs:
+        if ns is None:
+            runner = chiptest.runner.Runner(logs)
+        else:
+            runner = chiptest.runner.NamespacedRunner(ns, logs)
 
-    for i in range(iterations):
-        logging.info("Starting iteration %d" % (i+1))
-        observed_failures = 0
-        for test in context.obj.tests:
-            if context.obj.include_tags:
-                if not (test.tags & context.obj.include_tags):
-                    logging.debug("Test %s not included" % test.name)
-                    continue
+        test_case = Subprocess(kind='rpc', path=Path('scripts/tests/run_test_case.py')).wrap_with((sys.executable,))
 
-            if context.obj.exclude_tags:
-                if test.tags & context.obj.exclude_tags:
-                    logging.debug("Test %s excluded" % test.name)
-                    continue
+        proc, stdout, stderr = runner.RunSubprocess(test_case, wait=False, stdin=subprocess.PIPE)
+        # proc = subprocess.Popen(
+        #     cmd,
+        #     stdin=subprocess.PIPE,
+        #     stdout=logs,
+        #     stderr=logs
+        # )
 
-            test_start = time.monotonic()
-            try:
-                if context.obj.dry_run:
-                    logging.info("Would run test: %s" % test.name)
-                else:
-                    logging.info('%-20s - Starting test' % (test.name))
-                test.Run(
-                    runner, apps_register, paths, pics_file, test_timeout_seconds, context.obj.dry_run,
-                    test_runtime=context.obj.runtime,
-                    ble_controller_app=ble_controller_app,
-                    ble_controller_tool=ble_controller_tool,
-                )
-                if not context.obj.dry_run:
-                    test_end = time.monotonic()
-                    logging.info('%-30s - Completed in %0.2f seconds' %
-                                 (test.name, (test_end - test_start)))
-            except Exception:
-                test_end = time.monotonic()
-                logging.exception('%-30s - FAILED in %0.2f seconds' %
-                                  (test.name, (test_end - test_start)))
-                observed_failures += 1
-                if not keep_going:
-                    cleanup()
-                    sys.exit(2)
+        _, _ = proc.communicate(payload)
 
-        if observed_failures != expected_failures:
-            logging.exception(f'Iteration {i}: expected failure count {expected_failures}, but got {observed_failures}')
-            cleanup()
-            sys.exit(2)
+    if sys.platform == "linux":
+        if ble_wifi:
+            wifi.terminate()
+            bluetooth.terminate()
+            bus.terminate()
+        ns.terminate()
 
-    cleanup()
+    return proc.returncode == 0
 
 
 # On linux, allow an execution shell to be prepared
