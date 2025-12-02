@@ -128,7 +128,7 @@ class RunnerWaitQueue:
 class SubprocessInfo:
     # Restricted as this identifies the name of the network namespace in an executor implementing
     # test case isolation.
-    kind: Literal['app', 'tool']
+    kind: Literal['app', 'tool', 'rpc']
     path: pathlib.Path | str
     wrapper: tuple[str, ...] = ()
     args: tuple[str, ...] = ()
@@ -156,7 +156,7 @@ class Runner:
         self.executor = executor
         self.capture_delegate = capture_delegate
 
-    def RunSubprocess(self, subproc: SubprocessInfo, name: str, wait=True, dependencies=[], timeout_seconds: typing.Optional[int] = None, stdin=None):
+    def RunSubprocess(self, subproc: SubprocessInfo, name: str, close=True, wait=True, dependencies=[], timeout_seconds: typing.Optional[int] = None, stdin=None):
         log.info('RunSubprocess starting application %s' % subproc)
         cmd = subproc.to_cmd()
 
@@ -171,8 +171,10 @@ class Runner:
             self.capture_delegate.Log(name, 'EXECUTING %r' % cmd)
 
         s = self.executor.run(subproc, stdin=stdin, stdout=outpipe, stderr=errpipe)
-        outpipe.close()
-        errpipe.close()
+
+        if close:
+            outpipe.close()
+            errpipe.close()
 
         if not wait:
             return s, outpipe, errpipe

@@ -30,6 +30,9 @@ from chiptest.glob_matcher import GlobMatcher
 from chiptest.runner import Executor, SubprocessInfo
 from chiptest.test_definition import TestRunTime, TestTag
 from chipyaml.paths_finder import PathsFinder
+from queue import Queue
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import pickle
 
 log = logging.getLogger(__name__)
 
@@ -387,12 +390,144 @@ def cmd_run(context, iterations, all_clusters_app, lock_app, ota_provider_app, o
         chip_tool_with_python_cmd=chip_tool_with_python,
     )
 
+    # ble_controller_app = None
+    # ble_controller_tool = None
+
+    # if sys.platform == 'linux':
+    #     ns = chiptest.linux.IsolatedNetworkNamespace(
+    #         index=0,
+    #         # Do not bring up the app interface link automatically when doing BLE-WiFi commissioning.
+    #         setup_app_link_up=not ble_wifi,
+    #         # Change the app link name so the interface will be recognized as WiFi or Ethernet
+    #         # depending on the commissioning method used.
+    #         app_link_name='wlx-app' if ble_wifi else 'eth-app',
+    #         unshared=context.obj.in_unshare)
+
+    #     if ble_wifi:
+    #         bus = chiptest.linux.DBusTestSystemBus()
+    #         bluetooth = chiptest.linux.BluetoothMock()
+    #         wifi = chiptest.linux.WpaSupplicantMock("MatterAP", "MatterAPPassword", ns)
+    #         ble_controller_app = 0   # Bind app to the first BLE controller
+    #         ble_controller_tool = 1  # Bind tool to the second BLE controller
+
+    #     executor = chiptest.linux.LinuxNamespacedExecutor(ns)
+    # elif sys.platform == 'darwin':
+    #     executor = chiptest.darwin.DarwinExecutor()
+    # else:
+    #     log.warning("No platform-specific executor for '%s'", sys.platform)
+    #     executor = Executor()
+
+    # runner = chiptest.runner.Runner(executor=executor)
+
+    log.info("Each test will be executed %d times", iterations)
+
+    # apps_register = AppsRegister()
+    # apps_register.init()
+
+    max_workers = 4 if sys.platform == 'linux' else 1
+
+    os.makedirs('logs', exist_ok=True)
+
+    log.info("Each test will be executed %d times", iterations)
+
+    for i in range(iterations):
+        log.info("Starting iteration %d", i+1)
+        observed_failures = 0
+        available_ids = Queue()
+
+        for i in range(max_workers):
+            available_ids.put(i)
+
+        def run_test_with_id(test, context, paths, pics_file, ble_wifi, test_timeout_seconds):
+            index = available_ids.get()
+            result = run_test(test, index, context, paths, pics_file, ble_wifi, test_timeout_seconds)
+            available_ids.put(index)
+            return result
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_test = {
+                executor.submit(run_test_with_id, test, context, paths, pics_file, ble_wifi, test_timeout_seconds): test
+                for test in context.obj.tests
+            }
+
+            for future in as_completed(future_to_test):
+                test = future_to_test[future]
+                try:
+                    success, elapsed = future.result()
+                    if not success:
+                        observed_failures += 1
+
+                    with open(os.path.join("logs", test.name)) as logs:
+                        sys.stderr.write(logs.read())
+                except Exception as e:
+                    log.exception("%-30s - FAILED in %0.2f seconds", test.name, elapsed)
+                    observed_failures += 1
+
+        if observed_failures != expected_failures:
+            log.error("Iteration %d: expected failure count %d, but got %d", i, expected_failures, observed_failures)
+            sys.exit(2)
+
+    # def cleanup():
+    #     apps_register.uninit()
+    #     if sys.platform == 'linux':
+    #         if ble_wifi:
+    #             wifi.terminate()
+    #             bluetooth.terminate()
+    #             bus.terminate()
+    #         ns.terminate()
+
+    # for i in range(iterations):
+    #     log.info("Starting iteration %d", i+1)
+    #     observed_failures = 0
+    #     for test in context.obj.tests:
+    #         if context.obj.include_tags:
+    #             if not (test.tags & context.obj.include_tags):
+    #                 log.debug("Test '%s' not included", test.name)
+    #                 continue
+
+    #         if context.obj.exclude_tags:
+    #             if test.tags & context.obj.exclude_tags:
+    #                 log.debug("Test '%s' excluded", test.name)
+    #                 continue
+
+    #         test_start = time.monotonic()
+    #         try:
+    #             if context.obj.dry_run:
+    #                 log.info("Would run test: '%s'", test.name)
+    #             else:
+    #                 log.info("%-20s - Starting test", test.name)
+    #             test.Run(
+    #                 runner, apps_register, paths, pics_file, test_timeout_seconds, context.obj.dry_run,
+    #                 test_runtime=context.obj.runtime,
+    #                 ble_controller_app=ble_controller_app,
+    #                 ble_controller_tool=ble_controller_tool,
+    #             )
+    #             if not context.obj.dry_run:
+    #                 test_end = time.monotonic()
+    #                 log.info("%-30s - Completed in %0.2f seconds", test.name, test_end - test_start)
+    #         except Exception:
+    #             test_end = time.monotonic()
+    #             log.exception("%-30s - FAILED in %0.2f seconds", test.name, test_end - test_start)
+    #             observed_failures += 1
+    #             if not keep_going:
+    #                 cleanup()
+    #                 sys.exit(2)
+
+    #     if observed_failures != expected_failures:
+    #         log.error("Iteration %d: expected failure count %d, but got %d", i, expected_failures, observed_failures)
+    #         cleanup()
+    #         sys.exit(2)
+
+    # cleanup()
+
+def run_test(test, index, context, paths, pics_file, ble_wifi, test_timeout_seconds):
     ble_controller_app = None
     ble_controller_tool = None
+    ns = None
 
     if sys.platform == 'linux':
         ns = chiptest.linux.IsolatedNetworkNamespace(
-            index=0,
+            index,
             # Do not bring up the app interface link automatically when doing BLE-WiFi commissioning.
             setup_app_link_up=not ble_wifi,
             # Change the app link name so the interface will be recognized as WiFi or Ethernet
@@ -414,65 +549,24 @@ def cmd_run(context, iterations, all_clusters_app, lock_app, ota_provider_app, o
         log.warning("No platform-specific executor for '%s'", sys.platform)
         executor = Executor()
 
-    runner = chiptest.runner.Runner(executor=executor)
+    with open(Path('logs') / test.name, "w") as logs:
+        # TODO: ExecutionCapture
+        runner = chiptest.runner.Runner(executor=executor, capture_delegate=None)
 
-    log.info("Each test will be executed %d times", iterations)
+        payload = pickle.dumps((runner, test, context.obj, ble_controller_app, ble_controller_tool, pics_file, test_timeout_seconds))
 
-    apps_register = AppsRegister()
-    apps_register.init()
+        test_case = Subprocess(kind='rpc', path='scripts/tests/run_test_case.py').wrap_with(sys.executable)
 
-    def cleanup():
-        apps_register.uninit()
-        if sys.platform == 'linux':
-            if ble_wifi:
-                wifi.terminate()
-                bluetooth.terminate()
-                bus.terminate()
-            ns.terminate()
+        proc, stdout, stderr = runner.RunSubprocess(test_case, close=False, wait=False, stdin=subprocess.PIPE)
 
-    for i in range(iterations):
-        log.info("Starting iteration %d", i+1)
-        observed_failures = 0
-        for test in context.obj.tests:
-            if context.obj.include_tags:
-                if not (test.tags & context.obj.include_tags):
-                    log.debug("Test '%s' not included", test.name)
-                    continue
+        _, _ = proc.communicate(payload)
 
-            if context.obj.exclude_tags:
-                if test.tags & context.obj.exclude_tags:
-                    log.debug("Test '%s' excluded", test.name)
-                    continue
+        result = proc.wait()
 
-            test_start = time.monotonic()
-            try:
-                if context.obj.dry_run:
-                    log.info("Would run test: '%s'", test.name)
-                else:
-                    log.info("%-20s - Starting test", test.name)
-                test.Run(
-                    runner, apps_register, paths, pics_file, test_timeout_seconds, context.obj.dry_run,
-                    test_runtime=context.obj.runtime,
-                    ble_controller_app=ble_controller_app,
-                    ble_controller_tool=ble_controller_tool,
-                )
-                if not context.obj.dry_run:
-                    test_end = time.monotonic()
-                    log.info("%-30s - Completed in %0.2f seconds", test.name, test_end - test_start)
-            except Exception:
-                test_end = time.monotonic()
-                log.exception("%-30s - FAILED in %0.2f seconds", test.name, test_end - test_start)
-                observed_failures += 1
-                if not keep_going:
-                    cleanup()
-                    sys.exit(2)
+        stdout.close()
+        stderr.close()
 
-        if observed_failures != expected_failures:
-            log.error("Iteration %d: expected failure count %d, but got %d", i, expected_failures, observed_failures)
-            cleanup()
-            sys.exit(2)
-
-    cleanup()
+        return result, 0
 
 
 # On linux, allow an execution shell to be prepared

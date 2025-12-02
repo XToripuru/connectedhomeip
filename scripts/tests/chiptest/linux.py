@@ -73,27 +73,29 @@ class IsolatedNetworkNamespace:
         # Create 2 virtual hosts: for app and for the tool
         "ip netns add app-{index}",
         "ip netns add tool-{index}",
+        "ip netns add rpc-{index}",
 
         # Create links for switch to net connections
         "ip link add {app_link_name}-{index} type veth peer name {app_link_name}-sw-{index}",
         "ip link add {tool_link_name}-{index} type veth peer name {tool_link_name}-sw-{index}",
-        "ip link add eth-ci-{index} type veth peer name eth-ci-sw-{index}",
+        "ip link add {rpc_link_name}-{index} type veth peer name {rpc_link_name}-sw-{index}",
 
         # Link the connections together
         "ip link set {app_link_name}-{index} netns app-{index}",
         "ip link set {tool_link_name}-{index} netns tool-{index}",
+        "ip link set {rpc_link_name}-{index} netns rpc-{index}",
 
         # Bridge all the connections together.
         "ip link add name br1-{index} type bridge",
         "ip link set br1-{index} up",
         "ip link set {app_link_name}-sw-{index} master br1-{index}",
         "ip link set {tool_link_name}-sw-{index} master br1-{index}",
-        "ip link set eth-ci-sw-{index} master br1-{index}",
+        "ip link set {rpc_link_name}-sw-{index} master br1-{index}",
 
         # Create link between virtual host 'tool' and the test runner
-        "ip addr add 10.10.10.5/24 dev eth-ci-{index}",
-        "ip link set dev eth-ci-{index} up",
-        "ip link set dev eth-ci-sw-{index} up",
+        "ip addr add 10.10.10.5/24 dev {rpc_link_name}-{index}",
+        "ip link set dev {rpc_link_name}-{index} up",
+        "ip link set dev {rpc_link_name}-sw-{index} up",
     ]
 
     # Bring up application connection link.
@@ -119,26 +121,39 @@ class IsolatedNetworkNamespace:
         "ip netns exec tool-{index} ip -6 a add fd00:0:1:1::2/64 dev {tool_link_name}-{index}",
     ]
 
+    # Bring up XMLRPC server connection link.
+    COMMANDS_RPC_LINK_UP = [
+        "ip netns exec rpc-{index} ip addr add 10.10.10.2/24 dev {rpc_link_name}-{index}",
+        "ip netns exec rpc-{index} ip link set dev {rpc_link_name}-{index} up",
+        "ip netns exec rpc-{index} ip link set dev lo up",
+        "ip link set dev {rpc_link_name}-sw-{index} up",
+        # Force IPv6 to use ULAs that we control.
+        "ip netns exec rpc-{index} ip -6 addr flush {rpc_link_name}-{index}",
+        "ip netns exec rpc-{index} ip -6 a add fd00:0:1:1::3/64 dev {rpc_link_name}-{index}",
+    ]
+
     # Commands for removing namespaces previously created.
     COMMANDS_TERMINATE = [
-        "ip link set dev eth-ci-{index} down",
-        "ip link set dev eth-ci-sw-{index} down",
-        "ip addr del 10.10.10.5/24 dev eth-ci-{index}",
+        "ip link set dev {rpc_link_name}-{index} down",
+        "ip link set dev {rpc_link_name}-sw-{index} down",
+        "ip addr del 10.10.10.5/24 dev {rpc_link_name}-{index}",
 
         "ip link set br1-{index} down",
         "ip link delete br1-{index}",
 
-        "ip link delete eth-ci-sw-{index}",
+        "ip link delete {rpc_link_name}-sw-{index}",
         "ip link delete {tool_link_name}-sw-{index}",
         "ip link delete {app_link_name}-sw-{index}",
 
+        "ip netns del rpc-{index}",
         "ip netns del tool-{index}",
         "ip netns del app-{index}",
     ]
 
-    def __init__(self, index=0, setup_app_link_up=True, setup_tool_link_up=True,
-                 app_link_name='eth-app', tool_link_name='eth-tool',
-                 unshared=False):
+    def __init__(self, index=0,
+                setup_app_link_up=True, setup_tool_link_up=True, setup_rpc_link_up=True,
+                app_link_name='eth-app', tool_link_name='eth-tool', rpc_link_name='eth-rpc',
+                unshared=False):
 
         if not unshared:
             # If not running in an unshared network namespace yet, try
@@ -150,12 +165,15 @@ class IsolatedNetworkNamespace:
         self.index = index
         self.app_link_name = app_link_name
         self.tool_link_name = tool_link_name
+        self.rpc_link_name = rpc_link_name
 
         self._setup()
         if setup_app_link_up:
             self._setup_app_link_up(wait_for_dad=False)
         if setup_tool_link_up:
             self._setup_tool_link_up(wait_for_dad=False)
+        if setup_rpc_link_up:
+            self._setup_rpc_link_up(wait_for_dad=False)
         self._wait_for_duplicate_address_detection()
 
     def netns_for_subprocess(self, subproc: SubprocessInfo):
@@ -190,9 +208,16 @@ class IsolatedNetworkNamespace:
         if wait_for_dad:
             self._wait_for_duplicate_address_detection()
 
+    def _setup_rpc_link_up(self, wait_for_dad=True):
+        for command in self.COMMANDS_RPC_LINK_UP:
+            self._run(command)
+        if wait_for_dad:
+            self._wait_for_duplicate_address_detection()
+
     def _run(self, command: str):
         command = command.format(app_link_name=self.app_link_name,
                                  tool_link_name=self.tool_link_name,
+                                 rpc_link_name=self.rpc_link_name,
                                  index=self.index)
         log.debug("Executing: '%s'", command)
         if subprocess.run(command.split()).returncode != 0:
