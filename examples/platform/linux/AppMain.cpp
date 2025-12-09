@@ -16,9 +16,11 @@
  *    limitations under the License.
  */
 
+#include <filesystem>
 #include <string>
 
 #include <platform/CHIPDeviceLayer.h>
+#include <platform/Linux/Storage.h>
 #include <platform/PlatformManager.h>
 
 #include <app/InteractionModelEngine.h>
@@ -591,14 +593,31 @@ int ChipLinuxAppInit(int argc, char * const argv[], OptionSet * customOptions,
 
     sSecondaryNetworkCommissioningEndpoint = secondaryNetworkCommissioningEndpoint;
 
-#ifdef CHIP_CONFIG_KVS_PATH
-    if (LinuxDeviceOptions::GetInstance().KVS == nullptr)
+#ifdef CHIP_CONFIG_KVS
+    if (LinuxDeviceOptions::GetInstance().KVS_Directory == nullptr)
     {
-        err = DeviceLayer::PersistedStorage::KeyValueStoreMgrImpl().Init(CHIP_CONFIG_KVS_PATH);
+        const char * filename = (LinuxDeviceOptions::GetInstance().KVS_Filename == nullptr)
+            ? CHIP_CONFIG_KVS
+            : LinuxDeviceOptions::GetInstance().KVS_Filename;
+        std::string tmp       = std::filesystem::temp_directory_path();
+
+        DeviceLayer::Internal::Storage & storage = DeviceLayer::Internal::Storage::GetInstance();
+        storage.setDirectory(tmp.c_str());
+        storage.setFilename(filename);
+
+        err = DeviceLayer::PersistedStorage::KeyValueStoreMgrImpl().Init(tmp.c_str(), filename);
     }
     else
     {
-        err = DeviceLayer::PersistedStorage::KeyValueStoreMgrImpl().Init(LinuxDeviceOptions::GetInstance().KVS);
+        const char * filename = (LinuxDeviceOptions::GetInstance().KVS_Filename == nullptr)
+            ? CHIP_CONFIG_KVS
+            : LinuxDeviceOptions::GetInstance().KVS_Filename;
+
+        DeviceLayer::Internal::Storage & storage = DeviceLayer::Internal::Storage::GetInstance();
+        storage.setDirectory(LinuxDeviceOptions::GetInstance().KVS_Directory);
+        storage.setFilename(filename);
+
+        err = DeviceLayer::PersistedStorage::KeyValueStoreMgrImpl().Init(LinuxDeviceOptions::GetInstance().KVS_Directory, filename);
     }
     SuccessOrExit(err);
 #endif
@@ -1031,9 +1050,9 @@ void ChipLinuxAppMainLoop(chip::ServerInitParams & initParams, AppMainLoopImplem
     // NOLINTEND(bugprone-signal-handler)
 #endif
 #else
-    struct sigaction sa                        = {};
-    sa.sa_handler                              = StopSignalHandler;
-    sa.sa_flags                                = SA_RESETHAND;
+    struct sigaction sa = {};
+    sa.sa_handler       = StopSignalHandler;
+    sa.sa_flags         = SA_RESETHAND;
     sigaction(SIGINT, &sa, nullptr);
     sigaction(SIGTERM, &sa, nullptr);
 #endif

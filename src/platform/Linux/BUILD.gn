@@ -50,6 +50,8 @@ static_library("Linux") {
     "CHIPDevicePlatformEvent.h",
     "CHIPLinuxStorage.cpp",
     "CHIPLinuxStorage.h",
+    "Storage.cpp",
+    "Storage.h",
     "CHIPLinuxStorageIni.cpp",
     "CHIPLinuxStorageIni.h",
     "CHIPPlatformConfig.h",

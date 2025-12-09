@@ -33,6 +33,7 @@
 #include <platform/ConfigurationManager.h>
 #include <platform/DiagnosticDataProvider.h>
 #include <platform/Linux/PosixConfig.h>
+#include <platform/Linux/Storage.h>
 #include <platform/internal/GenericConfigurationManagerImpl.ipp>
 
 #include <algorithm>
@@ -53,12 +54,19 @@ CHIP_ERROR ConfigurationManagerImpl::Init()
     CHIP_ERROR err;
     uint32_t rebootCount;
 
+    // std::string & directory = DeviceLayer::PersistedStorage::KeyValueStoreMgrImpl().GetKvsDirectory();
+    DeviceLayer::Internal::Storage & storage = DeviceLayer::Internal::Storage::GetInstance();
+    const char * directory                   = storage.GetDirectory().c_str();
+    const char * kvs_filename                = storage.GetKVS().c_str();
+
     // Force initialization of NVS namespaces if they doesn't already exist.
-    err = PosixConfig::EnsureNamespace(PosixConfig::kConfigNamespace_ChipFactory);
+    err = PosixConfig::EnsureNamespace(PosixConfig::kConfigNamespace_KVS, directory, kvs_filename);
     SuccessOrExit(err);
-    err = PosixConfig::EnsureNamespace(PosixConfig::kConfigNamespace_ChipConfig);
+    err = PosixConfig::EnsureNamespace(PosixConfig::kConfigNamespace_ChipFactory, directory, CHIP_DEFAULT_FACTORY);
     SuccessOrExit(err);
-    err = PosixConfig::EnsureNamespace(PosixConfig::kConfigNamespace_ChipCounters);
+    err = PosixConfig::EnsureNamespace(PosixConfig::kConfigNamespace_ChipConfig, directory, CHIP_DEFAULT_CONFIG);
+    SuccessOrExit(err);
+    err = PosixConfig::EnsureNamespace(PosixConfig::kConfigNamespace_ChipCounters, directory, CHIP_DEFAULT_DATA);
     SuccessOrExit(err);
 
     // Initialize the generic implementation base class.

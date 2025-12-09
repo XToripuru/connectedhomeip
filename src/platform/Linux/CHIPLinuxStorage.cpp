@@ -49,27 +49,28 @@ ChipLinuxStorage::ChipLinuxStorage()
 
 ChipLinuxStorage::~ChipLinuxStorage() {}
 
-CHIP_ERROR ChipLinuxStorage::Init(const char * configFile)
+CHIP_ERROR ChipLinuxStorage::Init(const char * directory, const char * filename)
 {
     CHIP_ERROR retval = CHIP_NO_ERROR;
 
     if (mInitialized)
     {
-        ChipLogError(DeviceLayer, "ChipLinuxStorage::Init: Attempt to re-initialize with KVS config file: %s, IGNORING.",
-                     StringOrNullMarker(configFile));
+        ChipLogError(DeviceLayer, "ChipLinuxStorage::Init: Attempt to re-initialize with KVS config file: %s/%s, IGNORING.",
+                     StringOrNullMarker(directory), StringOrNullMarker(filename));
         return CHIP_NO_ERROR;
     }
 
-    ChipLogDetail(DeviceLayer, "ChipLinuxStorage::Init: Using KVS config file: %s", StringOrNullMarker(configFile));
+    ChipLogDetail(DeviceLayer, "ChipLinuxStorage::Init: Using KVS config file: %s/%s", StringOrNullMarker(directory),
+                  StringOrNullMarker(filename));
 
-    mConfigPath.assign(configFile);
-    retval = ChipLinuxStorageIni::Init();
+    mConfigPath = std::string(directory) + "/" + filename;
+    retval      = ChipLinuxStorageIni::Init();
 
     if (retval == CHIP_NO_ERROR)
     {
         std::ifstream ifs;
 
-        ifs.open(configFile, std::ifstream::in);
+        ifs.open(mConfigPath, std::ifstream::in);
 
         // Create default setting file if not exist.
         if (!ifs.good())

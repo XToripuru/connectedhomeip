@@ -49,11 +49,14 @@ public:
     static constexpr size_t kMaxConfigKeyNameLength = 15;
 
     // NVS namespaces used to store device configuration information.
+    static const char kConfigNamespace_KVS[];
     static const char kConfigNamespace_ChipFactory[];
     static const char kConfigNamespace_ChipConfig[];
     static const char kConfigNamespace_ChipCounters[];
 
     // Key definitions for well-known keys.
+    static const Key kConfigKey_KVS;
+
     static const Key kConfigKey_SerialNum;
     static const Key kConfigKey_UniqueId;
     static const Key kConfigKey_MfrDeviceId;
@@ -107,10 +110,8 @@ public:
     static void RunConfigUnitTest();
 
     // NVS Namespace helper functions.
-    static CHIP_ERROR EnsureNamespace(const char * ns);
+    static CHIP_ERROR EnsureNamespace(const char * ns, const char * directory, const char * filename);
     static CHIP_ERROR ClearNamespace(const char * ns);
-
-private:
     static ChipLinuxStorage * GetStorageForNamespace(Key key);
 };
 

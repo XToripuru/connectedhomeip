@@ -78,7 +78,8 @@ struct LinuxDeviceOptions
 #endif // CHIP_DEVICE_CONFIG_ENABLE_BOTH_COMMISSIONER_AND_COMMISSIONEE
     const char * command                = nullptr;
     const char * PICS                   = nullptr;
-    const char * KVS                    = nullptr;
+    const char * KVS_Directory          = nullptr;
+    const char * KVS_Filename           = nullptr;
     const char * app_pipe               = "";
     chip::Inet::InterfaceId interfaceId = chip::Inet::InterfaceId::Null();
 #if CHIP_CONFIG_TRANSPORT_TRACE_ENABLED
