@@ -360,8 +360,7 @@ inline bool PlatformManager::IsChipStackLockedByCurrentThread() const
 #endif
 
 inline CHIP_ERROR PlatformManager::InitChipStack()
-{
-    // NOTE: this is NOT thread safe and cannot be as the chip stack lock is prepared by
+{ // NOTE: this is NOT thread safe and cannot be as the chip stack lock is prepared by
     // InitChipStack itself on many platforms.
     //
     // In the future, this could be moved into specific platform code (where it can

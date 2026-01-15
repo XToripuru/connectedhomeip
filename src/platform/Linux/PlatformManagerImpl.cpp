@@ -239,7 +239,7 @@ CHIP_ERROR PlatformManagerImpl::_InitChipStack()
 #endif
 
     // Initialize the configuration system.
-    ReturnErrorOnFailure(Internal::PosixConfig::Init());
+    // ReturnErrorOnFailure(Internal::PosixConfig::Init());
 
     // Call _InitChipStack() on the generic implementation base class
     // to finish the initialization process.

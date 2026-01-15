@@ -49,6 +49,10 @@
 #define LOCALSTATEDIR "/tmp"
 #endif
 
+#define CHIP_DEFAULT_FACTORY "chip_factory.ini"
+#define CHIP_DEFAULT_CONFIG "chip_config.ini"
+#define CHIP_DEFAULT_DATA "chip_counters.ini"
+
 #define CHIP_DEFAULT_FACTORY_PATH                                                                                                  \
     FATCONFDIR "/"                                                                                                                 \
                "chip_factory.ini"
@@ -69,7 +73,7 @@ public:
     ChipLinuxStorage();
     ~ChipLinuxStorage();
 
-    CHIP_ERROR Init(const char * configFile);
+    CHIP_ERROR Init(const char * directory, const char * filename);
     CHIP_ERROR ReadValue(const char * key, bool & val);
     CHIP_ERROR ReadValue(const char * key, uint16_t & val);
     CHIP_ERROR ReadValue(const char * key, uint32_t & val);

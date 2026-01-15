@@ -36,6 +36,7 @@ namespace chip {
 namespace DeviceLayer {
 namespace Internal {
 
+static ChipLinuxStorage gChipLinuxKVS;
 static ChipLinuxStorage gChipLinuxFactoryStorage;
 static ChipLinuxStorage gChipLinuxConfigStorage;
 static ChipLinuxStorage gChipLinuxCountersStorage;
@@ -43,9 +44,13 @@ static ChipLinuxStorage gChipLinuxCountersStorage;
 // *** CAUTION ***: Changing the names or namespaces of these values will *break* existing devices.
 
 // NVS namespaces used to store device configuration information.
+const char PosixConfig::kConfigNamespace_KVS[]          = "kvs";
 const char PosixConfig::kConfigNamespace_ChipFactory[]  = "chip-factory";
 const char PosixConfig::kConfigNamespace_ChipConfig[]   = "chip-config";
 const char PosixConfig::kConfigNamespace_ChipCounters[] = "chip-counters";
+
+// Keys stored in the KVS namespace
+const PosixConfig::Key PosixConfig::kConfigKey_KVS = { kConfigNamespace_ChipFactory, "kvs" };
 
 // Keys stored in the Chip-factory namespace
 const PosixConfig::Key PosixConfig::kConfigKey_SerialNum             = { kConfigNamespace_ChipFactory, "serial-num" };
@@ -84,6 +89,9 @@ const PosixConfig::Key PosixConfig::kCounterKey_BootReason            = { kConfi
 
 ChipLinuxStorage * PosixConfig::GetStorageForNamespace(Key key)
 {
+    if (strcmp(key.Namespace, kConfigNamespace_KVS) == 0)
+        return &gChipLinuxKVS;
+
     if (strcmp(key.Namespace, kConfigNamespace_ChipFactory) == 0)
         return &gChipLinuxFactoryStorage;
 
@@ -96,10 +104,10 @@ ChipLinuxStorage * PosixConfig::GetStorageForNamespace(Key key)
     return nullptr;
 }
 
-CHIP_ERROR PosixConfig::Init()
-{
-    return PersistedStorage::KeyValueStoreMgrImpl().Init(CHIP_CONFIG_KVS_PATH);
-}
+// CHIP_ERROR PosixConfig::Init()
+// {
+//     return PersistedStorage::KeyValueStoreMgrImpl().Init(CHIP_CONFIG_KVS_PATH);
+// }
 
 CHIP_ERROR PosixConfig::ReadConfigValue(Key key, bool & val)
 {
@@ -471,25 +479,30 @@ bool PosixConfig::ConfigValueExists(Key key)
     return storage->HasValue(key.Name);
 }
 
-CHIP_ERROR PosixConfig::EnsureNamespace(const char * ns)
+CHIP_ERROR PosixConfig::EnsureNamespace(const char * ns, const char * directory, const char * filename)
 {
     CHIP_ERROR err             = CHIP_NO_ERROR;
     ChipLinuxStorage * storage = nullptr;
 
-    if (strcmp(ns, kConfigNamespace_ChipFactory) == 0)
+    if (strcmp(ns, kConfigNamespace_KVS) == 0)
+    {
+        storage = &gChipLinuxKVS;
+        err     = storage->Init(directory, filename);
+    }
+    else if (strcmp(ns, kConfigNamespace_ChipFactory) == 0)
     {
         storage = &gChipLinuxFactoryStorage;
-        err     = storage->Init(CHIP_DEFAULT_FACTORY_PATH);
+        err     = storage->Init(directory, filename);
     }
     else if (strcmp(ns, kConfigNamespace_ChipConfig) == 0)
     {
         storage = &gChipLinuxConfigStorage;
-        err     = storage->Init(CHIP_DEFAULT_CONFIG_PATH);
+        err     = storage->Init(directory, filename);
     }
     else if (strcmp(ns, kConfigNamespace_ChipCounters) == 0)
     {
         storage = &gChipLinuxCountersStorage;
-        err     = storage->Init(CHIP_DEFAULT_DATA_PATH);
+        err     = storage->Init(directory, filename);
     }
 
     SuccessOrExit(err);

@@ -90,7 +90,8 @@ enum
 #endif
     kDeviceOption_Command,
     kDeviceOption_PICS,
-    kDeviceOption_KVS,
+    kDeviceOption_KVS_Directory,
+    kDeviceOption_KVS_Filename,
     kDeviceOption_InterfaceId,
     kDeviceOption_AppPipe,
     kDeviceOption_Spake2pVerifierBase64,
@@ -199,7 +200,8 @@ OptionDef sDeviceOptionDefs[] = {
 #endif
     { "command", kArgumentRequired, kDeviceOption_Command },
     { "PICS", kArgumentRequired, kDeviceOption_PICS },
-    { "KVS", kArgumentRequired, kDeviceOption_KVS },
+    { "KVS-dir", kArgumentRequired, kDeviceOption_KVS_Directory },
+    { "KVS-name", kArgumentRequired, kDeviceOption_KVS_Filename },
     { "interface-id", kArgumentRequired, kDeviceOption_InterfaceId },
     { "app-pipe", kArgumentRequired, kDeviceOption_AppPipe },
 #if CHIP_CONFIG_TRANSPORT_TRACE_ENABLED
@@ -709,8 +711,12 @@ bool HandleOption(const char * aProgram, OptionSet * aOptions, int aIdentifier, 
         LinuxDeviceOptions::GetInstance().PICS = aValue;
         break;
 
-    case kDeviceOption_KVS:
-        LinuxDeviceOptions::GetInstance().KVS = aValue;
+    case kDeviceOption_KVS_Directory:
+        LinuxDeviceOptions::GetInstance().KVS_Directory = aValue;
+        break;
+
+    case kDeviceOption_KVS_Filename:
+        LinuxDeviceOptions::GetInstance().KVS_Filename = aValue;
         break;
 
     case kDeviceOption_AppPipe:
